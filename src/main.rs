@@ -1,65 +1,66 @@
-use std::collections::VecDeque;
-use std::fs;
 use inquire::{Confirm, InquireError, Select, Text};
-use std::fs::{DirEntry, File, ReadDir};
+use std::fs;
+use std::fs::{File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use inquire::error::InquireResult;
+use word_practice::engine::{Pool};
 use word_practice::parser::parse_all;
-use word_practice::{SOURCE_FOLDER_NAME,SPLIT_DELIMITER};
+use word_practice::{SOURCE_FOLDER_NAME, SPLIT_DELIMITER};
 
-fn cursed_escape(mut prompt: String) -> bool {
-    let mut buf: VecDeque<String> = VecDeque::new();
+fn cursed_escape(prompt: String) -> bool {
     let confirm = match Confirm::new(&format!("Do you want to ESCape {prompt}?")).prompt() {
         Ok(confirm) => confirm,
         Err(error) => match error {
-
-            InquireError::OperationCanceled => { cursed_escape(prompt + " cancel operation") },
+            InquireError::OperationCanceled => cursed_escape(prompt + " cancel operation"),
             InquireError::OperationInterrupted => cursed_escape(prompt + " interrupt operation"),
-            other=> unreachable!()
-        }
+            _other => unreachable!(),
+        },
     };
     confirm
 }
+
 fn main() -> Result<(), anyhow::Error> {
-
-
     let parsed = parse_all()?;
 
-    let options = vec!["Learn","Add","Settings"];
+    let options = vec!["Learn", "Add", "Settings"];
     let main_select = Select::new("Main menu", options);
     loop {
         let menu = match main_select.clone().prompt() {
-            Ok(ans) => {ans}
-            Err(error) => {match error {
+            Ok(ans) => ans,
+            Err(error) => match error {
                 InquireError::OperationCanceled => {
                     let confirm = cursed_escape("this program".into());
                     if confirm {
                         break;
                     }
                     continue;
-                },
-                other => { println!("{other}"); break; },
-            }}
+                }
+                other => {
+                    println!("{other}");
+                    break;
+                }
+            },
         };
         match menu {
-            "Learn" => {
-                loop {
-                    let options: Vec<String> = parsed.keys().map(|key| key.display().to_string()).collect();
-                    let res = Select::new("Choose practice set", options).prompt();
-                    match res {
-                        Ok(ans) => {
-                            let key = PathBuf::from(ans);
-                            let set = parsed.get(&key).unwrap();
-                            println!("{set:#?}");
-                        }
-                        Err(error) => {match error {
-                            InquireError::OperationCanceled => {break}
-                            InquireError::OperationInterrupted => {return Ok(())}
-                            other => {println!("{other}"); break}
-                        }}
+            "Learn" => loop {
+                let options: Vec<String> =
+                    parsed.keys().map(|key| key.display().to_string()).collect();
+                let res = Select::new("Choose practice set", options).prompt();
+                match res {
+                    Ok(ans) => {
+                        let key = PathBuf::from(ans);
+                        let set = parsed.get(&key).unwrap().to_owned();
+                        let mut pool = Pool::new(set);
+                        pool.cycle();
                     }
-
+                    Err(error) => match error {
+                        InquireError::OperationCanceled => break,
+                        InquireError::OperationInterrupted => return Ok(()),
+                        other => {
+                            println!("{other}");
+                            break;
+                        }
+                    },
                 }
             },
             "Add" => {
@@ -69,71 +70,101 @@ fn main() -> Result<(), anyhow::Error> {
                     continue;
                 }
                 let current_dir = std::env::current_dir()?;
-                let mut full_path = current_dir.join(SOURCE_FOLDER_NAME).join(Path::new(&file_name));
+                let mut full_path = current_dir
+                    .join(SOURCE_FOLDER_NAME)
+                    .join(Path::new(&file_name));
                 full_path.set_extension("txt");
                 println!("{full_path:?}");
-                if full_path.exists() {
-                    let confirm = Confirm::new("Would you like to append to the existing file?").prompt()?;
 
-                } else {
-                    let ask_word = Text::new("Word");
-                    let ask_definition = Text::new("Definition");
-                    let mut buf: Vec<(String, String)> = Vec::new();
-                    println!("Click ESC to save definitions to file");
-                    loop {
-                        let word = match ask_word.clone().prompt() {
-                            Ok(word) => {if !word.is_empty() { word } else {
-                                println!("Enter a word!");
-                                continue;
-                            }}
-                            Err(error) => {match error {
-                                InquireError::OperationCanceled  => {break}
-                                other => {println!("{other}"); return Ok(())}
-                            }}
-                        };
-
-                        let definition = match ask_definition.clone().prompt() {
-                            Ok(definition) => {if !word.is_empty() { definition } else {
-                                println!("Enter a word!");
-                                continue;
-                            }}
-                            Err(error) => {match error {
-                                InquireError::OperationCanceled  => {break}
-                                other => {println!("{other}"); return Ok(())}
-                            }}
-                        };
-
-                        buf.push((word, definition));
-                        println!("Definition added");
-                    }
-
-                    if buf.is_empty() {
-                        println!("It seems you've just changed your mind, saving to file cancelled");
-                        continue;
-                    }
-
-                    let mut file = File::create(&full_path)?;
-                    let bytes = buf.iter().flat_map(|(left, right)| format!("{left}{SPLIT_DELIMITER}{right}\n").into_bytes()).collect::<Vec<u8>>();
-                    file.write_all(bytes.as_slice())?;
-
-                    let count = buf.len();
-                    let def;
-                    if count == 1 {
-                        def = "definition"
-                    } else {
-                        def = "definitions"
-                    }
-                    println!("Saved {count} {def} to file {:?}",&full_path.file_name().unwrap());
+                let mut is_appending = false;
+                if full_path.exists() && full_path.is_file() {
+                    let confirm =
+                        Confirm::new("Would you like to append to the existing file?").prompt()?;
+                    is_appending = confirm;
                 }
-            },
+
+                let ask_word = Text::new("Word");
+                let ask_definition = Text::new("Definition");
+                let mut buf: Vec<(String, String)> = Vec::new();
+                println!("Click ESC to save definitions to file");
+                loop {
+                    let word = match ask_word.clone().prompt() {
+                        Ok(word) => {
+                            if !word.is_empty() {
+                                word
+                            } else {
+                                println!("Enter a word!");
+                                continue;
+                            }
+                        }
+                        Err(error) => match error {
+                            InquireError::OperationCanceled => break,
+                            other => {
+                                println!("{other}");
+                                return Ok(());
+                            }
+                        },
+                    };
+
+                    let definition = match ask_definition.clone().prompt() {
+                        Ok(definition) => {
+                            if !word.is_empty() {
+                                definition
+                            } else {
+                                println!("Enter a word!");
+                                continue;
+                            }
+                        }
+                        Err(error) => match error {
+                            InquireError::OperationCanceled => break,
+                            other => {
+                                println!("{other}");
+                                return Ok(());
+                            }
+                        },
+                    };
+
+                    buf.push((word, definition));
+                    println!("Definition added");
+                }
+
+                if buf.is_empty() {
+                    println!("It seems you've just changed your mind, saving to file cancelled");
+                    continue;
+                }
+
+                let mut file;
+                if is_appending {
+                    file = fs::OpenOptions::new().append(true).open(&full_path)?;
+                } else {
+                    file = File::create(&full_path)?;
+                }
+
+                let bytes = buf
+                    .iter()
+                    .flat_map(|(left, right)| {
+                        format!("{left}{SPLIT_DELIMITER}{right}\n").into_bytes()
+                    })
+                    .collect::<Vec<u8>>();
+                file.write_all(bytes.as_slice())?;
+
+                let count = buf.len();
+                let def;
+                if count == 1 {
+                    def = "definition"
+                } else {
+                    def = "definitions"
+                }
+                println!(
+                    "Saved {count} {def} to file {:?}",
+                    &full_path.file_name().unwrap()
+                );
+            }
             "Settings" => {}
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
-
     println!("See ya later!");
-    return Ok(())
+    Ok(())
 }
-
-

@@ -1,3 +1,4 @@
+pub mod engine;
 pub mod parser;
 
 pub const SOURCE_FOLDER_NAME: &str = "source";
