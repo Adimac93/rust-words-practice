@@ -41,6 +41,7 @@ impl Pool {
     pub fn cycle(&mut self) {
         println!("Translate");
         let mut round = 1;
+        let mut total = self.definitions.len();
         while !self.definitions.is_empty() {
             println!("Round {round}");
             let mut missed: Vec<(String, String)> = Vec::new();
@@ -53,7 +54,9 @@ impl Pool {
             let mut rng = thread_rng();
             missed.shuffle(&mut rng);
             self.definitions = missed;
-
+            let completed = total - self.definitions.len();
+            println!("{completed}/{total}");
+            total = self.definitions.len();
             round += 1;
         }
     }

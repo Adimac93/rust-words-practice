@@ -6,6 +6,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 use word_practice::engine::Pool;
 use word_practice::parser::parse_all;
 use word_practice::{SOURCE_FOLDER_NAME, SPLIT_DELIMITER};
@@ -94,7 +95,10 @@ fn main() -> Result<(), anyhow::Error> {
                         println!("{:?}", parsed.keys());
                         let set = parsed.get(&key).unwrap().to_owned();
                         let mut pool = Pool::new(set);
+                        let start = SystemTime::now();
                         pool.cycle();
+                        let duration = start.elapsed().unwrap().as_secs();
+                        println!("Finished in {duration}s");
                     }
                     Err(error) => match error {
                         InquireError::OperationCanceled => break,
