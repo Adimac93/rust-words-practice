@@ -1,11 +1,10 @@
 use inquire::validator::Validation;
 use inquire::{Confirm, InquireError, Select, Text};
-use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use word_practice::engine::Pool;
 use word_practice::parser::parse_all;
@@ -35,23 +34,11 @@ impl Display for PathPart {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let parts: String = self
             .0
-            .components()
             .into_iter()
-            .filter_map(|x| match x {
-                // Component::Prefix(_) => {}
-                // Component::RootDir => {}
-                // Component::CurDir => {}
-                // Component::ParentDir => {}
-                Component::Normal(name) => {
-                    let name = name.to_owned().into_string().unwrap();
-                    if name != SOURCE_FOLDER_NAME {
-                        return Some("/".to_string() + &name);
-                    }
-                    None
-                }
-                _ => None,
-            })
-            .collect();
+            .skip(2)
+            .map(|str| str.to_string_lossy().to_string())
+            .collect::<Vec<String>>()
+            .join("/");
 
         write!(f, "{parts}")
     }
@@ -88,31 +75,29 @@ fn main() -> Result<(), anyhow::Error> {
                     .collect();
 
                 let res = Select::new("Choose practice set", options).prompt();
-                match res {
-                    Ok(ans) => {
-                        let key = PathBuf::from(ans.0);
-                        println!("{key:?}");
-                        println!("{:?}", parsed.keys());
-                        let set = parsed.get(&key).unwrap().to_owned();
-                        let mut pool = Pool::new(set);
-                        let start = SystemTime::now();
-                        pool.cycle();
-                        let duration = start.elapsed().unwrap().as_secs();
-                        println!("Finished in {duration}s");
-                    }
+                let ans = match res {
+                    Ok(PathPart(ans)) => ans,
                     Err(error) => match error {
                         InquireError::OperationCanceled => break,
-                        InquireError::OperationInterrupted => return Ok(()),
+                        InquireError::OperationInterrupted => break,
                         other => {
                             println!("{other}");
                             break;
                         }
                     },
-                }
+                };
+
+                let key = PathBuf::from(ans);
+                let set = parsed[&key].to_owned();
+                let mut pool = Pool::new(set);
+                let start = SystemTime::now();
+                pool.cycle();
+                let duration = start.elapsed().unwrap().as_secs();
+                println!("Finished in {duration}s");
             },
             "Add" => {
-                let text = Text::new("Enter a file name (without extension)");
-                let file_name = text.prompt()?;
+                let file_name_prompt = Text::new("Enter a file name (without extension)");
+                let file_name = file_name_prompt.prompt()?;
                 if file_name.is_empty() {
                     println!("Seriously, empty? Use some creativity next time.");
                     continue;
