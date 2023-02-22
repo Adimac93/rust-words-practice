@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::{DirEntry, File, ReadDir};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn parse_all() -> anyhow::Result<HashMap<PathBuf, Vec<(String, String)>>> {
-    let path = std::env::current_dir()?.join(SOURCE_FOLDER_NAME);
+    let path = Path::new(".").join(SOURCE_FOLDER_NAME);
     if path.exists() {
         let dir = fs::read_dir(path).context("Failed to read source directory")?;
         let sources = read_sources(dir);

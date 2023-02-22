@@ -1,9 +1,12 @@
+use inquire::validator::Validation;
 use inquire::{Confirm, InquireError, Select, Text};
+use std::ffi::OsString;
+use std::fmt::{Display, Formatter};
 use std::fs;
-use std::fs::{File};
+use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use word_practice::engine::{Pool};
+use std::path::{Component, Path, PathBuf};
+use word_practice::engine::Pool;
 use word_practice::parser::parse_all;
 use word_practice::{SOURCE_FOLDER_NAME, SPLIT_DELIMITER};
 
@@ -17,6 +20,40 @@ fn cursed_escape(prompt: String) -> bool {
         },
     };
     confirm
+}
+
+struct PathPart(PathBuf);
+
+impl PathPart {
+    fn new(path_buf: PathBuf) -> Self {
+        Self(path_buf)
+    }
+}
+
+impl Display for PathPart {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let parts: String = self
+            .0
+            .components()
+            .into_iter()
+            .filter_map(|x| match x {
+                // Component::Prefix(_) => {}
+                // Component::RootDir => {}
+                // Component::CurDir => {}
+                // Component::ParentDir => {}
+                Component::Normal(name) => {
+                    let name = name.to_owned().into_string().unwrap();
+                    if name != SOURCE_FOLDER_NAME {
+                        return Some("/".to_string() + &name);
+                    }
+                    None
+                }
+                _ => None,
+            })
+            .collect();
+
+        write!(f, "{parts}")
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -43,12 +80,18 @@ fn main() -> Result<(), anyhow::Error> {
         };
         match menu {
             "Learn" => loop {
-                let options: Vec<String> =
-                    parsed.keys().map(|key| key.display().to_string()).collect();
+                let options: Vec<PathPart> = parsed
+                    .clone()
+                    .into_keys()
+                    .map(|part| PathPart::new(part))
+                    .collect();
+
                 let res = Select::new("Choose practice set", options).prompt();
                 match res {
                     Ok(ans) => {
-                        let key = PathBuf::from(ans);
+                        let key = PathBuf::from(ans.0);
+                        println!("{key:?}");
+                        println!("{:?}", parsed.keys());
                         let set = parsed.get(&key).unwrap().to_owned();
                         let mut pool = Pool::new(set);
                         pool.cycle();
@@ -64,7 +107,8 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             },
             "Add" => {
-                let file_name = Text::new("Enter a file name (without extension)").prompt()?;
+                let text = Text::new("Enter a file name (without extension)");
+                let file_name = text.prompt()?;
                 if file_name.is_empty() {
                     println!("Seriously, empty? Use some creativity next time.");
                     continue;
@@ -83,8 +127,19 @@ fn main() -> Result<(), anyhow::Error> {
                     is_appending = confirm;
                 }
 
-                let ask_word = Text::new("Word");
-                let ask_definition = Text::new("Definition");
+                let validator = |input: &str| match input.contains(SPLIT_DELIMITER) {
+                    false => {
+                        if input.is_empty() {
+                            return Ok(Validation::Invalid("You can not save empty value!".into()));
+                        }
+                        Ok(Validation::Valid)
+                    }
+                    true => Ok(Validation::Invalid(
+                        "You can not use split delimiter as part of your definition!".into(),
+                    )),
+                };
+                let ask_word = Text::new("Word").with_validator(validator);
+                let ask_definition = Text::new("Definition").with_validator(validator);
                 let mut buf: Vec<(String, String)> = Vec::new();
                 println!("Click ESC to save definitions to file");
                 loop {
