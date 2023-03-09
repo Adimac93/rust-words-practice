@@ -1,19 +1,20 @@
 mod edit;
 mod learn;
 
+use crate::gui::start_gui_mode;
 use crate::prompts::edit::edit_prompt;
 use crate::prompts::learn::learn_prompt;
 use inquire::{Confirm, InquireError, Select};
 
 pub fn main_menu() -> anyhow::Result<()> {
-    let options = vec!["Learn", "Add", "Settings"];
+    let options = vec!["Learn", "Add", "Settings", "GUI"];
     let main_select = Select::new("Main menu", options);
     loop {
         let menu = match main_select.clone().prompt() {
             Ok(ans) => ans,
             Err(error) => match error {
                 InquireError::OperationCanceled => {
-                    let exit = cursed_escape("this program".into());
+                    let exit = cursed_escape();
                     if exit {
                         break;
                     }
@@ -25,10 +26,12 @@ pub fn main_menu() -> anyhow::Result<()> {
                 }
             },
         };
+        let menu = "GUI";
 
         return match menu {
             "Learn" => learn_prompt(),
             "Add" => edit_prompt(),
+            "GUI" => start_gui_mode(),
             "Settings" => unreachable!(),
             _ => unreachable!(),
         };
@@ -36,7 +39,7 @@ pub fn main_menu() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cursed_escape(prompt: String) -> bool {
+fn cursed_escape() -> bool {
     let mut prompt = format!("Do you want to ESCape this program");
     loop {
         match Confirm::new(&prompt).prompt() {
