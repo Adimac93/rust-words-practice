@@ -24,7 +24,7 @@ impl Pool {
                     println!("Your are correct");
                     true
                 } else {
-                    println!("You are wrong");
+                    println!("You are wrong, correct answer is {left}");
                     false
                 }
             }

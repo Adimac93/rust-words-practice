@@ -52,6 +52,11 @@ fn read_sources(dir: ReadDir) -> Vec<DirEntry> {
             continue
         };
         if file_type.is_file() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.len() == 0 {
+                    continue;
+                }
+            }
             buf.push(entry);
         } else if file_type.is_dir() {
             let Ok(dir) = fs::read_dir(entry.path()) else {
